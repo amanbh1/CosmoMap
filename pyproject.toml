@@ -36,6 +36,7 @@ include = ["cosmomap*"]
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+extend-exclude = ["paper_experiments"]  # research scripts for the paper, kept as run
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "NPY"]
