@@ -1,12 +1,13 @@
 """Thermal-bremsstrahlung X-ray emissivity and surface-brightness projection.
 
 The dominant X-ray emission from the hot intracluster medium is thermal
-bremsstrahlung, for which the emissivity scales as::
+bremsstrahlung, for which the bolometric emissivity scales as::
 
     eps_X = A * n_e^2 * sqrt(T)
 
-with ``A = 1.42e-27`` (cgs). This is the relation used in the dissertation to
-turn predicted ``(n_e, T)`` fields into observable X-ray quantities.
+with ``A = 1.42e-27`` (cgs), a Gaunt factor of unity and the ion term replaced by
+``n_e``. Computed from voxel-averaged fields it neglects sub-voxel clumping, so it
+is a proxy for comparing predicted and true fields, not an absolute luminosity.
 """
 
 from __future__ import annotations

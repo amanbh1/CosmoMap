@@ -1,5 +1,6 @@
 # Tiny configuration for the out-of-the-box demo / CI (no real data needed).
 # Train with:  cosmomap-train --config configs/synthetic.yaml --synthetic
+# It uses the composite likelihood loss so that the uncertainty outputs are exercised too.
 data:
   data_root: data/synthetic
   redshifts: [0.0, 1.0]
@@ -9,7 +10,7 @@ data:
   resolution: 32
   box_size_mpc_h: 25.0
   patch_size: 16
-  include_redshift_in_cond: false
+  include_redshift_in_cond: true
 
 model:
   base_filters: 16
@@ -19,9 +20,18 @@ model:
   dropout: 0.1
   heteroscedastic: true
 
+loss:
+  w_nll: 0.408
+  w_mse: 0.150
+  w_mae: 0.134
+  w_huber: 0.207
+  lambda_variance: 0.01
+
 train:
   epochs: 2
+  steps_per_epoch: null   # one pass over the training samples per epoch
   batch_size: 2
   learning_rate: 1.0e-3
+  warmup_epochs: 0
   mixed_precision: false
   output_dir: outputs/synthetic

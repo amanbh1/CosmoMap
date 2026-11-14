@@ -1,3 +1,9 @@
+"""Compare CIC, TSC and PCS gridding of the dark matter particle speeds of one hydrodynamical snapshot with the
+published CMD velocity grid of the same simulation (log correlation over all cells, median deviation).
+PCS reproduces the published grid; it is the scheme grid_velocity.py uses for the gravity-only runs.
+
+    python validate_kernels.py <simulation index>
+"""
 import sys
 import numpy as np
 from common import RAW

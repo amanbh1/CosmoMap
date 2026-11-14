@@ -9,8 +9,11 @@ Outputs (float16, log10 physical units) in RUNS/<name>/pred/:
     mu_<field>_z<z>.npy     (n_test, 128,128,128)
     sig_<field>_z<z>.npy    total sigma in dex (aleatoric + MC-dropout epistemic)
     sige_<field>_z<z>.npy   epistemic sigma in dex
+The sigma files are meaningful only for models trained with a likelihood term (CosmoMap-sigma and
+the NLL variants). For the others (--loss mse, nounc) the variance channels of the network are
+untrained, and nothing in the paper uses their sigma files.
 
-    python predict.py --name film_s0 [--mc 8]
+    python predict.py --name film_z0_s0 [--mc 8]
 """
 
 from __future__ import annotations

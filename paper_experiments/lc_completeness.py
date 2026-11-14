@@ -1,4 +1,4 @@
-"""Lightcone source completeness and purity as a function of flux (from lightcone_v2.json): fraction of true
+"""Lightcone source completeness and purity as a function of flux (from lightcone.json): fraction of true
 sources recovered above true-flux thresholds, and purity above predicted-flux thresholds. Fluxes are in
 detection counts and are compared within each lightcone through its own flux percentiles and pooled."""
 import json
@@ -7,7 +7,7 @@ import numpy as np
 
 from common import RUNS
 
-L = json.load(open(RUNS / "lightcone_v2.json"))["lightcones"]
+L = json.load(open(RUNS / "lightcone.json"))["lightcones"]
 ft, mt, fp, rp = [], [], [], []
 for r in L:
     f = np.array(r["flux_true"]); m = np.zeros(len(f), bool); m[r["matched_true"]] = True

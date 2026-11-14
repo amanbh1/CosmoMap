@@ -1,12 +1,16 @@
-"""Assemble predicted (n_e, T) volumes into a mock X-ray surface-brightness
-lightcone and write it to a WCS-tagged FITS image.
+"""Assemble predicted (n_e, T) volumes into a simple mock X-ray surface-brightness
+map and write it to a WCS-tagged FITS image.
 
-This realises the dissertation's lightcone stage (§3.5.2-3.5.3): per redshift it
-computes the bremsstrahlung emissivity, projects it to a surface-brightness map
-with (1+z)^-4 dimming, maps the comoving box to an angular footprint via the
-flat-ΛCDM angular-diameter distance D_A(z), trilinearly interpolates between
+This is a lightweight utility with one projected box per redshift: it computes the
+bremsstrahlung emissivity, projects it to a surface-brightness map with (1+z)^-4
+dimming, maps the comoving box to an angular footprint via the flat-ΛCDM
+angular-diameter distance D_A(z), optionally interpolates linearly between
 redshift slices, and applies optional PSF blurring, background, and a flux limit.
 ``astropy`` provides the cosmological distances and the FITS/WCS machinery.
+
+The lightcones analysed in the paper are built differently, by stacking 25 Mpc/h
+slabs along the line of sight with random symmetries and shifts, Poisson noise and
+source detection: see ``paper_experiments/lightcone.py``.
 """
 
 from __future__ import annotations
@@ -29,10 +33,10 @@ class LightconeConfig:
     omega_m: float = 0.3
     field_of_view_deg: float = 1.0
     npix: int = 256
-    n_interp_slices: int = 0  # extra trilinear-interpolated redshift planes between slices
+    n_interp_slices: int = 0  # extra linearly interpolated redshift planes between slices
     psf_fwhm_arcmin: float = 0.0  # 0 disables PSF convolution
-    background_level: float = 0.0  # additive background (Eq 25)
-    flux_limit: float = 0.0  # zero pixels below this surface brightness (Eq 23)
+    background_level: float = 0.0  # additive background
+    flux_limit: float = 0.0  # zero pixels below this surface brightness
 
 
 def _cosmology(config: LightconeConfig):
@@ -42,12 +46,12 @@ def _cosmology(config: LightconeConfig):
 
 
 def comoving_distance(z: float, config: LightconeConfig) -> float:
-    """Line-of-sight comoving distance χ(z) [Mpc] (Eq 20)."""
+    """Line-of-sight comoving distance χ(z) [Mpc]."""
     return float(_cosmology(config).comoving_distance(z).value)
 
 
 def angular_diameter_distance(z: float, config: LightconeConfig) -> float:
-    """Angular-diameter distance D_A(z) = χ/(1+z) [Mpc] (Eq 21)."""
+    """Angular-diameter distance D_A(z) = χ/(1+z) [Mpc]."""
     return float(_cosmology(config).angular_diameter_distance(z).value)
 
 
@@ -60,7 +64,7 @@ def _resample(image: np.ndarray, npix: int) -> np.ndarray:
 
 
 def _angular_footprint_fraction(z: float, config: LightconeConfig) -> float:
-    """Fraction of the FoV subtended by the comoving box at redshift z (Eq 22).
+    """Fraction of the FoV subtended by the comoving box at redshift z.
 
     θ = r_perp / D_A, with r_perp the proper transverse box size. At z=0 the
     footprint is clamped to the full field of view.
@@ -89,7 +93,7 @@ def _project_to_fov(ne: np.ndarray, temperature: np.ndarray, z: float, config: L
 
 
 def _interpolate_slice(slices: dict[float, np.ndarray], zs: list[float], z: float) -> np.ndarray:
-    """Trilinear (linear-in-z) interpolation between adjacent projected slices."""
+    """Linear-in-z interpolation between adjacent projected slices."""
     if z <= zs[0]:
         return slices[zs[0]]
     if z >= zs[-1]:

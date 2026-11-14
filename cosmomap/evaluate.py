@@ -1,5 +1,7 @@
-"""Evaluation: overall accuracy, accuracy stratified by local dark-matter
-density (the dissertation's headline result), and uncertainty calibration.
+"""Evaluation: overall accuracy, accuracy stratified by local dark-matter density,
+and uncertainty calibration. All metrics are in log10 of the physical fields
+(RMSE and bias in dex), obtained with the training-set normalisation constants
+saved by the training run.
 
 Usage::
 
@@ -19,14 +21,22 @@ from tensorflow import keras
 
 import cosmomap.models  # noqa: F401  -- import registers FiLM3D so saved models load
 from cosmomap.config import Config
-from cosmomap.data import make_dataset, make_synthetic_camels, split_simulations
+from cosmomap.data import (
+    load_normalization,
+    make_dataset,
+    make_synthetic_camels,
+    split_simulations,
+)
 from cosmomap.data.camels import load_camels
+from cosmomap.data.normalization import Normalization
 from cosmomap.metrics import pearson_r, r2_score, rmse
+from cosmomap.train import NORMALIZATION_FILE
 from cosmomap.uncertainty import calibration_coverage, mc_dropout_predict
 
-#: Cosmic-web regimes by local DM-density percentile (matches the thesis).
+#: Density regimes by percentile of local dark-matter density, pooled over the
+#: evaluated patches.
 PERCENTILE_EDGES = [0, 10, 30, 50, 80, 95, 100]
-REGIME_LABELS = ["deep_void", "void", "sheet", "filament", "outskirt", "cluster_core"]
+REGIME_LABELS = ["deep_void", "void", "sheet", "filament", "outskirt", "halo_core"]
 
 
 def _collect(model, dataset, n_out):
@@ -36,7 +46,7 @@ def _collect(model, dataset, n_out):
         pred = tf.cast(model(inputs, training=False), tf.float32).numpy()
         y_mean.append(pred[..., :n_out])
         y_true.append(targets.numpy())
-        dm.append(inputs["image"].numpy()[..., 0])  # normalised DM density channel
+        dm.append(inputs["image"].numpy()[..., 0])  # standardised DM density channel
     return (
         np.concatenate(y_true, axis=0),
         np.concatenate(y_mean, axis=0),
@@ -68,12 +78,21 @@ def stratified_by_density(
     return results
 
 
-def evaluate(config: Config, model: keras.Model, data, indices, mc_passes: int = 0) -> dict:
-    """Compute overall, density-stratified and (optionally) calibration metrics."""
+def evaluate(
+    config: Config, model: keras.Model, data, indices, stats: Normalization, mc_passes: int = 0
+) -> dict:
+    """Compute overall, density-stratified and (optionally) calibration metrics.
+
+    ``stats`` are the normalisation constants the model was trained with.
+    """
     n_out = config.n_out
     field_names = config.data.fields_out
-    dataset = make_dataset(data, indices, config, training=False)
+    dataset = make_dataset(data, indices, config, training=False, stats=stats)
     y_true, y_mean, dm = _collect(model, dataset, n_out)
+    # standardised -> log10 physical units, with constants fixed at training time
+    scale = np.array([stats[f]["std"] for f in field_names], np.float32)
+    shift = np.array([stats[f]["mean"] for f in field_names], np.float32)
+    y_true, y_mean = y_true * scale + shift, y_mean * scale + shift
 
     overall = {
         name: {
@@ -89,8 +108,9 @@ def evaluate(config: Config, model: keras.Model, data, indices, mc_passes: int =
         "by_density_regime": stratified_by_density(y_true, y_mean, dm, field_names),
     }
 
-    if mc_passes > 0 and config.model.heteroscedastic:
-        # Calibration on a single representative batch.
+    if mc_passes > 0 and config.model.heteroscedastic and config.loss.w_nll > 0:
+        # Calibration on a single representative batch (standardised units; coverage
+        # is unchanged by the linear map to log10 physical units).
         inputs, targets = next(iter(dataset))
         uq = mc_dropout_predict(
             model, inputs, n_passes=mc_passes, n_out=n_out, heteroscedastic=True
@@ -111,9 +131,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--synthetic", action="store_true", help="evaluate on generated data")
     parser.add_argument("--n-sims", type=int, default=16)
     parser.add_argument("--mc-passes", type=int, default=20, help="MC-dropout passes (0 to skip)")
+    parser.add_argument(
+        "--stats", default=None, help="normalisation constants (default: next to the config)"
+    )
     args = parser.parse_args(argv)
 
     config = Config.from_yaml(args.config)
+    stats = load_normalization(args.stats or Path(args.config).parent / NORMALIZATION_FILE)
     model = keras.models.load_model(args.model, compile=False)
     data = (
         make_synthetic_camels(config, n_sims=args.n_sims, seed=config.train.seed)
@@ -124,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
         data.sim_ids, config.data.train_val_test_split, config.train.seed
     )
 
-    report = evaluate(config, model, data, test_idx, mc_passes=args.mc_passes)
+    report = evaluate(config, model, data, test_idx, stats, mc_passes=args.mc_passes)
     out_path = Path(config.train.output_dir) / "evaluation.json"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(report, indent=2))

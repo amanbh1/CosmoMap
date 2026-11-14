@@ -1,17 +1,16 @@
 """Synthetic, physically-flavoured CAMELS-like data.
 
 This lets the whole pipeline run end-to-end (train, evaluate, lightcone) with no
-download, so reviewers can ``pip install -e . && pytest`` or train a toy model in
-seconds. Fields are *correlated* the way the real ones are:
+download, so the code can be tested or a toy model trained in seconds. It is not
+a physical model. Fields have roughly the units and magnitudes of the CAMELS
+grids and are *correlated* the way the real ones are:
 
 * dark-matter density is a lognormal field built from a Gaussian random field;
-* velocity magnitude tracks the density gradient;
-* electron density follows the gas (~ DM) density with a small bias and scatter;
-* temperature follows a shock-heating relation ``T ~ rho^(2/3)`` modulated by the
-  AGN-feedback parameter,
+* velocity magnitude is positive and loosely tracks the density field;
+* electron density follows the dark-matter density with a small bias and scatter;
+* temperature follows ``T ~ rho^(2/3)`` modulated by the AGN-feedback parameter,
 
-so the network has genuine structure to learn and the physics-informed losses
-(positive ``n_e``, density-temperature correlation) are meaningful.
+so the network has genuine structure to learn.
 """
 
 from __future__ import annotations
@@ -80,16 +79,19 @@ def make_synthetic_camels(config: Config, n_sims: int = 8, seed: int = 0) -> Cam
             growth = 1.0 / (1.0 + z)  # structure grows toward low redshift
             log_rho = (0.6 + 0.5 * omega_m) * growth * delta
 
-            mcdm = np.power(10.0, log_rho).astype(np.float32)
-            vcdm = np.abs(
-                _gaussian_random_field(r, rng, n_index=-5.0) + 0.3 * delta
+            # Magnitudes follow the CAMELS grids (Msun/h per (Mpc/h)^3, km/s, h^2 cm^-3, K),
+            # so the default floors of the log transform lie well below the data.
+            mcdm = np.power(10.0, 10.0 + log_rho).astype(np.float32)
+            vcdm = (
+                10.0
+                + 100.0 * np.abs(_gaussian_random_field(r, rng, n_index=-5.0) + 0.3 * delta)
             ).astype(np.float32)
             ne = np.power(
-                10.0, 0.9 * log_rho - 3.0 + 0.15 * rng.standard_normal((r, r, r))
+                10.0, 0.9 * log_rho - 7.0 + 0.15 * rng.standard_normal((r, r, r))
             ).astype(np.float32)
             temp = np.power(
                 10.0,
-                6.0 + 0.66 * log_rho + 0.1 * (a_agn - 1.0) + 0.1 * rng.standard_normal((r, r, r)),
+                5.0 + 0.66 * log_rho + 0.1 * (a_agn - 1.0) + 0.1 * rng.standard_normal((r, r, r)),
             ).astype(np.float32)
 
             sample = {"Mcdm": mcdm, "Vcdm": vcdm, "ne": ne, "T": temp}

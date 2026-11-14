@@ -1,8 +1,10 @@
-"""Cosmological-parameter recovery (§3.4.3).
+"""Cosmological-parameter recovery from summary statistics.
 
 Extracts a **32-dimensional** feature vector from predicted (or true) fields and
 trains a Random-Forest regressor to recover the CAMELS parameters (primarily
-Ω_m and σ₈).
+Ω_m and σ₈). This is a general utility; the parameter-recovery test of the paper
+uses a different set of 32 statistics and a fixed validation/test split
+(``paper_experiments/param_recovery.py``).
 
 Feature vector (32-d):
   * statistical moments (mean, std, skewness, kurtosis) of T, n_e and the X-ray

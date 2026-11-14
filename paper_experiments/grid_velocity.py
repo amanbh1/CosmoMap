@@ -3,7 +3,9 @@
 validate: read PartType1 of one IllustrisTNG hydro snapshot (remote, HTTP range reads) and compare candidate
           gridding schemes with the CMD Vcdm grid of the same simulation, to reproduce its definition.
 nbody:    grid the matched IllustrisTNG_DM (gravity-only) z=0 snapshots of the test simulations with the scheme
-          that reproduces CMD (PCS, mass-weighted mean particle speed: log-corr 0.998 over all cells, median deviation 0.7%) and write ~/camels/Grids_Vcdm_Nbody_test_z=0.0.npy (rows in split()["test"] order).
+          that reproduces CMD (PCS, mass-weighted mean particle speed: log-corr 0.998 over all cells, median deviation 0.7%;
+          see validate_kernels.py) and write RAW/Grids_Vcdm_Nbody_test_pcs_z=0.0.npy (rows in split()["test"] order),
+          the file passed to ``predict.py --nbody-vel``.
 
     python grid_velocity.py validate [sim]
     python grid_velocity.py nbody
@@ -119,7 +121,7 @@ def nbody():
         if str(sim) in have:
             continue
         t0 = time.time()
-        for attempt in range(5):
+        for _attempt in range(5):
             try:
                 pos, vel = read_dm(f"{BASE}/IllustrisTNG_DM/LH/LH_{sim}/snapshot_090.hdf5")
                 break

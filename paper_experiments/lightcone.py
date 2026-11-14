@@ -15,7 +15,9 @@ For each of N test simulations we build a 1 deg x 1 deg lightcone from z=0.05 to
   * sources are detected as connected regions more than 5 sigma above a local (median-filtered)
     background after PSF smoothing, and matched between maps within 2 PSF FWHM.
 
-    python lightcone.py [n_lightcones]
+    python lightcone.py [n_lightcones]      (the paper uses 10)
+Writes RUNS/lightcone.json (per-lightcone and pooled statistics, with per-source match flags) and
+RUNS/lightcone_example.npz (maps, counts and detections of the first lightcone).
 """
 import json
 import sys
@@ -76,9 +78,6 @@ def detect(counts, psf_sigma_pix, bkg_box=33):
     cen = np.array(ndimage.center_of_mass(sm, lab, range(1, n + 1)))
     flux = ndimage.sum(counts - local, lab, range(1, n + 1))
     return cen, flux
-
-
-OUTNAME = "lightcone_v2.json"  # same lightcones as lightcone.json, plus per-source match flags
 
 
 def main():
@@ -154,7 +153,7 @@ def main():
                    map_pearson_log=float(np.corrcoef(lt.ravel(), lp.ravel())[0, 1]),
                    total_flux_logratio=float(np.log10(maps["pred"].sum() / maps["truth"].sum())))
         out["lightcones"].append(rec)
-        if n == 0 and OUTNAME == "lightcone.json":
+        if n == 0:  # example lightcone for the figure and the FITS products
             np.savez_compressed(RUNS / "lightcone_example.npz", truth=conv["truth"], pred=conv["pred"],
                                 counts_truth=counts["truth"], counts_pred=counts["pred"], cen_t=cen_t, cen_p=cen_p)
         print(f"lc {n}: slabs {len(edges)} n_true {len(cen_t)} n_pred {len(cen_p)} compl {rec['completeness']:.2f} "
@@ -169,7 +168,7 @@ def main():
                           map_pearson_log=float(np.mean([r["map_pearson_log"] for r in L])),
                           total_flux_logratio=float(np.mean([r["total_flux_logratio"] for r in L])))
     print("SUMMARY", out["summary"])
-    (RUNS / OUTNAME).write_text(json.dumps(out))
+    (RUNS / "lightcone.json").write_text(json.dumps(out))
 
 
 if __name__ == "__main__":

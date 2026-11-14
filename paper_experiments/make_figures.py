@@ -1,4 +1,4 @@
-"""Paper figures from the rerun.  python make_figures.py [fig ...]   (default: all available)
+"""Paper figures.  python make_figures.py [fig ...]   (default: all available; figs_extra.py makes the rest)
 
 Writes to ./figures/ (previews to ./fig_preview/).
 """

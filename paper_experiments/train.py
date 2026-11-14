@@ -1,7 +1,12 @@
 """Train the 3D FiLM U-Net on globally normalised CAMELS-TNG fields.
 
-    python train.py --name film_s0 --seed 0
-    python train.py --name nofilm_s0 --seed 0 --no-cond     # unconditioned ablation
+    python train.py --name mse_z0_s0 --seed 0 --zs 0.0 --loss mse     # CosmoMap
+    python train.py --name film_z0_s0 --seed 0 --zs 0.0               # CosmoMap-sigma (composite likelihood loss)
+    python train.py --name nofilm_mse_z0_s0 --seed 0 --zs 0.0 --loss mse --no-cond   # unconditioned ablation
+
+Writes RUNS/<name>/: config.json, history.json (one record per epoch), best.weights.h5,
+the weights with the lowest loss on a fixed set of validation sub-volumes (used for every
+result in the paper), and last.weights.h5, the weights after the final epoch.
 """
 
 from __future__ import annotations
@@ -140,6 +145,7 @@ def main():
     sp = split()
     use_cond = not args.no_cond
     print("redshifts", zs, "cond", use_cond, flush=True)
+    (out / "config.json").write_text(json.dumps(vars(args) | {"zs": zs}, indent=1))  # also needed if training is interrupted
 
     tr = Sampler(sp["train"], zs, args.patch, stats, use_cond, args.seed)
     va = Sampler(sp["val"], zs, args.patch, stats, use_cond, 12345)
@@ -199,6 +205,7 @@ def main():
             if bad >= args.patience:
                 print("early stop", flush=True)
                 break
+    model.save_weights(out / "last.weights.h5")  # final-epoch weights, to compare with the selected checkpoint
     (out / "config.json").write_text(json.dumps(vars(args) | {"zs": zs}, indent=1))
     print("done best", best, flush=True)
 

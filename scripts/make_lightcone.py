@@ -1,4 +1,7 @@
-"""Generate a mock X-ray surface-brightness lightcone from a trained model.
+"""Generate a simple mock X-ray surface-brightness map from a trained model.
+
+This is a small demonstration of the package's X-ray utilities on one simulation.
+The lightcones analysed in the paper are built by ``paper_experiments/lightcone.py``.
 
 Example
 -------
@@ -18,9 +21,10 @@ from tensorflow import keras
 
 import cosmomap.models  # noqa: F401  -- import registers FiLM3D so saved models load
 from cosmomap.config import Config
-from cosmomap.data import make_synthetic_camels
+from cosmomap.data import load_normalization, make_synthetic_camels
 from cosmomap.data.camels import load_camels
-from cosmomap.data.normalization import denormalize_field, normalize_field
+from cosmomap.data.normalization import Normalization, denormalize_field, normalize_field
+from cosmomap.train import NORMALIZATION_FILE
 from cosmomap.xray import LightconeConfig, build_lightcone, save_fits
 
 
@@ -29,8 +33,12 @@ def _center_slice(resolution: int, patch: int) -> tuple[slice, slice, slice]:
     return (slice(s, s + patch),) * 3  # type: ignore[return-value]
 
 
-def predict_volumes(model, data, config: Config, sim: int = 0):
-    """Predict (n_e, T) volumes for one simulation across all redshifts."""
+def predict_volumes(model, data, config: Config, stats: Normalization, sim: int = 0):
+    """Predict (n_e, T) volumes for one simulation across all redshifts.
+
+    Inputs are normalised, and predictions returned to physical units, with the
+    training-set constants in ``stats``; the true gas fields are never read.
+    """
     patch = config.data.patch_size
     sl = _center_slice(data.resolution, patch)
     n_z = len(config.data.redshifts)
@@ -41,19 +49,14 @@ def predict_volumes(model, data, config: Config, sim: int = 0):
     for zi, z in enumerate(config.data.redshifts):
         idx = sim * n_z + zi
         x = np.stack(
-            [normalize_field(data.fields[f][idx][sl], f, config.data.log_epsilon)[0]
-             for f in config.data.fields_in],
+            [normalize_field(data.fields[f][idx][sl], stats[f]) for f in config.data.fields_in],
             axis=-1,
-        )[None].astype("float32")
+        )[None]
         cond = data.cond[idx][None].astype("float32")
         pred = np.asarray(model({"image": x, "cosmo": cond}, training=False))[0, ..., :n_out]
 
-        # De-normalise each predicted field to physical units. The original
-        # pipeline stores the input normalisation stats; here (illustrative) we
-        # reuse the matching true-field per-patch stats for inversion.
         for ci, f in enumerate(config.data.fields_out):
-            _, stats = normalize_field(data.fields[f][idx][sl], f, config.data.log_epsilon)
-            physical = denormalize_field(pred[..., ci], stats)
+            physical = denormalize_field(pred[..., ci], stats[f])
             if f == "ne":
                 ne_vol[z] = physical
             elif f == "T":
@@ -68,9 +71,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--synthetic", action="store_true")
     parser.add_argument("--n-sims", type=int, default=8)
     parser.add_argument("--out", default=None)
+    parser.add_argument(
+        "--stats", default=None, help="normalisation constants (default: next to the config)"
+    )
     args = parser.parse_args(argv)
 
     config = Config.from_yaml(args.config)
+    stats = load_normalization(args.stats or Path(args.config).parent / NORMALIZATION_FILE)
     model = keras.models.load_model(args.model, compile=False)
     data = (
         make_synthetic_camels(config, n_sims=args.n_sims, seed=config.train.seed)
@@ -78,7 +85,7 @@ def main(argv: list[str] | None = None) -> None:
         else load_camels(config)
     )
 
-    ne_vol, t_vol = predict_volumes(model, data, config)
+    ne_vol, t_vol = predict_volumes(model, data, config, stats)
     lc = LightconeConfig(
         redshifts=config.data.redshifts, box_size_mpc_h=config.data.box_size_mpc_h, npix=128
     )

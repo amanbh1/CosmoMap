@@ -1,9 +1,9 @@
 """Convert raw CAMELS grids to globally standardised log10 float16 arrays.
 
-Statistics (mean/std of log10 field) are computed from TRAINING simulations only,
-pooled over all available redshifts, so redshift evolution of the amplitude is
-preserved in the standardised data. Run after each new redshift lands; stats are
-computed once from the first run's redshifts and then frozen.
+Statistics (mean/std of log10 field) are computed once, from TRAINING simulations
+at z=0 only, and frozen in PREP/stats.json. Every redshift is standardised with
+these same constants, so the redshift evolution of the amplitude is preserved in
+the standardised data. Run again whenever a new redshift has been downloaded.
 
     python prep.py            # process every raw redshift not yet prepared
     python prep.py --inspect  # print value ranges of raw files
@@ -17,6 +17,8 @@ import json
 import numpy as np
 
 from common import ALL_FIELDS, FLOORS, PREP, REDSHIFTS, load_params, prep_path, raw_path, split
+
+STATS_REDSHIFTS = [0.0]  # the normalisation constants of the paper are fitted at z=0
 
 
 def raw_ready(z: float) -> bool:
@@ -86,7 +88,13 @@ def main():
         print("no complete raw redshifts yet")
         return
     stats_file = PREP / "stats.json"
-    stats = json.loads(stats_file.read_text()) if stats_file.exists() else compute_stats(zs)
+    if stats_file.exists():
+        stats = json.loads(stats_file.read_text())
+    elif all(z in zs for z in STATS_REDSHIFTS):
+        stats = compute_stats(STATS_REDSHIFTS)
+    else:
+        print(f"the z={STATS_REDSHIFTS} grids are needed first: the normalisation constants are computed from them")
+        return
     for z in zs:
         convert(z, stats)
 

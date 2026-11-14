@@ -5,12 +5,12 @@ to baryonic fields. With ``heteroscedastic=True`` the output has ``2 * n_out``
 channels: the first ``n_out`` are the predicted means and the remaining ``n_out``
 are predicted log-variances, enabling aleatoric uncertainty.
 
-Architecture (§3.3.2): a 3-level encoder/decoder with
-channels ``64 -> 128 -> 256`` and the bottleneck held at the deepest level (256),
-GroupNorm (8 groups), residual blocks with FiLM conditioning, dense skip
-connections, and no attention. The patch size must be divisible by
-``2 ** depth`` so the encoder/decoder spatial dimensions line up (e.g. 80 with
-depth 3 -> 10 at the bottleneck).
+Architecture: a 3-level encoder/decoder with channels ``64 -> 128 -> 256`` and
+the bottleneck held at the deepest level (256), GroupNorm (8 groups), residual
+blocks with FiLM conditioning, skip connections, and no attention; 11,056,772
+parameters with the default configuration. The patch size must be divisible by
+``2 ** depth`` so the encoder/decoder spatial dimensions line up (e.g. 64 with
+depth 3 -> 8 at the bottleneck).
 """
 
 from __future__ import annotations

@@ -17,7 +17,9 @@ class CamelsData:
         Mapping ``field_name -> array`` of shape ``(N, R, R, R)`` (float32),
         where ``N`` is the number of samples (simulations x redshifts) and
         ``R`` is :attr:`resolution`. Fields are stored in *physical* units;
-        normalisation is applied per patch at sampling time.
+        the fixed training-set normalisation is applied at sampling time.
+        Samples are ordered simulation by simulation, with the redshifts of
+        each simulation in the order of :attr:`redshifts`.
     cond:
         Array ``(N, n_cond)`` of already-normalised conditioning vectors
         (the CAMELS parameters, optionally with redshift appended).

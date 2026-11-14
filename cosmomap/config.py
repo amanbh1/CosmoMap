@@ -1,9 +1,10 @@
 """Typed, serialisable configuration for the CosmoMap pipeline.
 
 All hyperparameters live here so that experiments are fully described by a single
-YAML file. Defaults reproduce the configuration reported in the dissertation
-(patch size 80, 3-level encoder, FiLM conditioning on six CAMELS parameters,
-heteroscedastic outputs, loss weights from the hyperparameter search).
+YAML file. The defaults follow the CosmoMap model of the paper: 64^3 patches, a
+3-level encoder, FiLM conditioning on the six CAMELS parameters and the redshift,
+a mean-squared-error loss, AdamW with a one-epoch warm-up and cosine decay.
+``configs/sigma.yaml`` switches to the composite likelihood loss of CosmoMap-sigma.
 """
 
 from __future__ import annotations
@@ -20,6 +21,9 @@ class DataConfig:
     """Dataset, field and preprocessing settings."""
 
     data_root: str = "data/camels"
+    #: Load only the first ``max_sims`` simulations (``None``: all). The loader keeps
+    #: the data in memory, so use a subset unless you have the RAM for the full set.
+    max_sims: int | None = None
     #: Redshift snapshots used for (multi-z) training.
     redshifts: list[float] = field(default_factory=lambda: [0.0, 0.5, 1.0, 1.5, 2.0])
     #: Input channels: cold-dark-matter mass density and velocity magnitude.
@@ -32,9 +36,14 @@ class DataConfig:
     )
     resolution: int = 128  # native voxels per simulation side (25 h^-1 Mpc box)
     box_size_mpc_h: float = 25.0
-    patch_size: int = 80  # cubic sub-volume fed to the network
-    include_redshift_in_cond: bool = False  # thesis conditions on the 6 params only (Eq 7)
-    log_epsilon: float = 1e-8  # floor for the log10 transform of multiplicative fields
+    patch_size: int = 64  # cubic sub-volume fed to the network (12.5 h^-1 Mpc)
+    include_redshift_in_cond: bool = True  # conditioning vector = six parameters + redshift
+    #: Floors applied before the log10 transform (CAMELS units); ``log_epsilon`` is
+    #: the floor of any log-transformed field not listed here.
+    log_floors: dict[str, float] = field(
+        default_factory=lambda: {"Mcdm": 1e6, "Vcdm": 1.0, "T": 10.0, "ne": 1e-12}
+    )
+    log_epsilon: float = 1e-8
     train_val_test_split: list[float] = field(default_factory=lambda: [0.8, 0.1, 0.1])
 
 
@@ -44,43 +53,48 @@ class ModelConfig:
 
     base_filters: int = 64  # channels at the first encoder level (64 -> 128 -> 256)
     depth: int = 3  # number of encoder/decoder levels
-    # Light encoder/decoder blocks + a heavier bottleneck (~11M parameters total,
-    # with the bottleneck as the heaviest component).
+    # Light encoder/decoder blocks + a heavier bottleneck (~11M parameters total).
     convs_per_block: int = 1  # 3x3x3 convolutions per encoder/decoder residual block
     bottleneck_convs: int | None = 2  # convs in the bottleneck block
     groups: int = 8  # GroupNorm groups
     cond_hidden: int = 192  # width of the conditioning MLP (FiLM generator)
     dropout: float = 0.1  # spatial dropout; also used for MC-dropout epistemic UQ
-    heteroscedastic: bool = True  # predict per-voxel log-variance alongside the mean
+    #: Predict a per-voxel log-variance alongside each mean. The head is kept for
+    #: the MSE-trained model too (its variance channels are then untrained), so
+    #: that both variants have the same architecture.
+    heteroscedastic: bool = True
 
 
 @dataclass
 class LossConfig:
-    """Composite-loss weights (optimised in the dissertation's HPO search)."""
+    """Loss weights. The defaults give the mean squared error of the predicted
+    means (CosmoMap). CosmoMap-sigma uses the composite loss
+    ``0.408 NLL + 0.150 MSE + 0.134 MAE + 0.207 Huber + 0.01 <s^2>``."""
 
-    w_nll: float = 0.408  # heteroscedastic negative log-likelihood
-    w_mse: float = 0.150
-    w_mae: float = 0.134
-    w_huber: float = 0.207
+    w_nll: float = 0.0  # heteroscedastic Gaussian negative log-likelihood
+    w_mse: float = 1.0
+    w_mae: float = 0.0
+    w_huber: float = 0.0
     huber_delta: float = 1.0
-    lambda_positivity: float = 0.1  # penalise negative electron-density predictions
-    lambda_variance: float = 0.01  # regularise predicted variance (prevents divergence)
+    lambda_variance: float = 0.0  # penalty on the mean predicted variance
 
 
 @dataclass
 class TrainConfig:
     """Optimisation and runtime settings."""
 
-    epochs: int = 100
-    batch_size: int = 16
-    learning_rate: float = 1e-4
+    epochs: int = 30
+    batch_size: int = 4
+    learning_rate: float = 2e-4  # peak learning rate
     lr_schedule: str = "cosine"  # one of {"cosine", "constant"}
-    grad_clip_norm: float = 1.0  # gradient clipping (tau = 1.0 in the thesis)
-    early_stop_patience: int = 10
+    warmup_epochs: int = 1  # linear warm-up from learning_rate / 10 (cosine schedule only)
+    weight_decay: float = 1e-5  # AdamW
+    grad_clip_norm: float = 1.0  # per-variable gradient-norm clipping
+    early_stop_patience: int = 1000  # effectively off: the best validation checkpoint is kept
     seed: int = 42
     mixed_precision: bool = True
     multi_gpu: bool = False  # wrap training in tf.distribute.MirroredStrategy
-    steps_per_epoch: int | None = None  # None -> derived from the dataset size
+    steps_per_epoch: int | None = 1000  # None -> derived from the dataset size
     output_dir: str = "outputs"
 
 

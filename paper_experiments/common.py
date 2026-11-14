@@ -1,4 +1,4 @@
-"""Shared settings for the CosmoMap rerun on CAMELS IllustrisTNG LH (128^3).
+"""Shared settings for the paper experiments on CAMELS IllustrisTNG LH (128^3).
 
 Key design choices:
 * GLOBAL normalisation: log10 fields standardised with a single mean/std per

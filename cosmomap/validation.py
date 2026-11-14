@@ -1,9 +1,12 @@
-"""Scientific validation analyses from the dissertation's §3.4 framework:
+"""General-purpose validation utilities:
 
-* scaling relations (§3.4.1): n_e ∝ ρ_DM^α and T ∝ ρ_DM^β via log-log regression,
-* cluster detection (§3.4.2): 3D connected components on X-ray emissivity + a
+* scaling relations: n_e ∝ ρ_DM^α and T ∝ ρ_DM^β via log-log regression,
+* bright-structure detection: 3D connected components on X-ray emissivity, and a
   β-model surface-brightness fit,
-* parameter-space robustness (§3.4.6): Mahalanobis distance from the training set.
+* parameter-space robustness: Mahalanobis distance from the training set.
+
+The analyses of the paper use their own implementations of these, with the exact
+thresholds and samples described there (``paper_experiments/validation_extra.py``).
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ def scaling_relation(
     dm_density: np.ndarray, field: np.ndarray, n_samples: int = 10_000, seed: int = 42
 ) -> dict[str, float]:
     """Fit a power law ``field ∝ rho_DM^exponent`` by log-log regression on up to
-    ``n_samples`` randomly sampled voxels (§3.4.1). Returns exponent, intercept, R².
+    ``n_samples`` randomly sampled voxels. Returns exponent, intercept, R².
     """
     rng = np.random.default_rng(seed)
     dm = np.asarray(dm_density, dtype=np.float64).ravel()
@@ -40,7 +43,7 @@ def scaling_relation(
 
 def mahalanobis_distance(p_test: np.ndarray, p_train: np.ndarray) -> np.ndarray:
     """Mahalanobis distance of test parameter vectors from the training
-    distribution (§3.4.6, Eq 16), using the (pseudo-inverse) training covariance.
+    distribution, using the (pseudo-inverse) training covariance.
     """
     p_train = np.asarray(p_train, dtype=np.float64)
     mu = p_train.mean(axis=0)
@@ -53,9 +56,9 @@ def mahalanobis_distance(p_test: np.ndarray, p_train: np.ndarray) -> np.ndarray:
 def detect_clusters(
     emissivity: np.ndarray, percentile: float = 90.0
 ) -> tuple[np.ndarray, int, list[dict]]:
-    """3D connected-component cluster detection (§3.4.2).
+    """3D connected-component detection of bright structures.
 
-    Thresholds the emissivity field at ``percentile`` and labels components with
+    Thresholds the emissivity field at its own ``percentile`` and labels components with
     full 26-connectivity. Returns ``(labels, n_clusters, properties)``.
     """
     emis = np.asarray(emissivity, dtype=np.float64)
@@ -76,7 +79,7 @@ def detect_clusters(
 
 
 def beta_model(r: np.ndarray, s0: float, r_c: float, beta: float) -> np.ndarray:
-    """Canonical X-ray surface-brightness β-model (Eq 15):
+    """Canonical X-ray surface-brightness β-model:
     ``S(r) = S0 * [1 + (r/r_c)^2]^(-3β + 1/2)``."""
     r = np.asarray(r, dtype=np.float64)
     return s0 * (1.0 + (r / r_c) ** 2) ** (-3.0 * beta + 0.5)

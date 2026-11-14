@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "cosmomap"
 version = "0.1.0"
-description = "Field-level deep learning that paints baryonic fields (gas temperature & electron density) onto dark-matter fields from CAMELS, with a 3D FiLM-conditioned heteroscedastic U-Net and an X-ray forward model."
+description = "CosmoMap: a FiLM-conditioned 3D U-Net that predicts gas temperature and electron density from dark matter fields, trained on CAMELS IllustrisTNG."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -25,6 +25,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=7.4", "ruff>=0.4", "mypy>=1.8"]
+# extra dependencies of paper_experiments/ (reading CAMELS particle snapshots over HTTP)
+paper = ["h5py>=3.9", "hdf5plugin>=4.2", "fsspec>=2023.6", "aiohttp>=3.9"]
 
 [project.scripts]
 cosmomap-train = "cosmomap.train:main"

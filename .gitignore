@@ -30,6 +30,8 @@ wandb/
 *.fits
 *.ckpt
 checkpoints/
+paper_experiments/figures/
+paper_experiments/fig_preview/
 
 # OS / editor
 .DS_Store

@@ -1,148 +1,146 @@
 # CosmoMap
 
-**3D deep learning for baryon prediction in galaxy clusters.**
+**Predicting hot gas temperature and density from dark matter with a conditioned 3D U-Net.**
 
-CosmoMap is a 3D, FiLM-conditioned, *heteroscedastic* U-Net that maps the dark-matter
-fields of a cosmological simulation (density + velocity) to the baryonic fields that
-are expensive to simulate, **gas temperature** and **electron number density**, then
-pushes those predictions through an **X-ray forward model** (emissivity →
-surface-brightness lightcone). Trained on the
-[CAMELS](https://camels.readthedocs.io/) IllustrisTNG suite and conditioned on the six
-CAMELS cosmological/astrophysical parameters, a single network generalises across
-cosmologies and feedback models, replacing ~10⁶ CPU-hour hydrodynamical simulations
-with ~0.1 s of inference per volume.
+Code for the paper *CosmoMap: Predicting Hot Gas Temperature and Density from Dark Matter
+with a Conditioned 3D U-Net* (Aman Bhutani and Maggie Lieu).
 
-My MSci dissertation project, University of Nottingham, *Enhancing Baryon Prediction
-in Galaxy Clusters Through Three-Dimensional Deep Learning.*
+CosmoMap is a 3D U-Net that maps the dark matter density and velocity magnitude of a
+cosmological simulation to its gas temperature and electron number density. It is trained
+on the IllustrisTNG Latin-hypercube set of [CAMELS](https://camels.readthedocs.io/) and
+conditioned, through FiLM layers, on the two cosmological and four feedback parameters and
+the redshift, so one network covers the whole parameter space. A full 128³ box
+(25 h⁻¹ Mpc) is predicted in about 2 s on a single consumer GPU.
 
 ```
-   DM density  ┐
-               ├─► [ 3D FiLM U-Net ] ─► (T, ne) means + per-voxel log-variance ─► X-ray emissivity ─► lightcone (FITS)
-   DM velocity ┘            ▲
-        Ω_m, σ₈, A_SN/AGN ──┘  (FiLM conditioning)
+ log ρ_DM   ┐
+            ├─► [ 3D FiLM U-Net, 11.1 M parameters ] ─► log T, log n_e  (and per-voxel variance for CosmoMap-σ)
+ log |v_DM| ┘                 ▲
+   Ω_m, σ_8, A_SN1, A_AGN1, A_SN2, A_AGN2, z
 ```
 
-## Highlights
+![Slices through a test box: inputs, simulation, CosmoMap, gradient-boosted trees and residuals](docs/figures/slices_z0.png)
 
-- **3D FiLM-conditioned U-Net** (~11M parameters), residual encoder/decoder with
-  GroupNorm; the six CAMELS parameters modulate every feature map via Feature-wise
-  Linear Modulation, so one model spans the cosmological/astrophysical parameter space.
-- **Uncertainty quantification**, heteroscedastic output head (aleatoric) plus
-  Monte-Carlo dropout (epistemic), with calibrated confidence intervals.
-- **Physics-informed composite loss**, Gaussian NLL + MSE + MAE + Huber, with a
-  positivity prior on electron density and a variance regulariser.
-- **X-ray forward model**, thermal-bremsstrahlung emissivity `ε_X = 1.42e-27·ne²·√T`,
-  a flat-ΛCDM lightcone (angular-diameter mapping, PSF, background) written to FITS,
-  plus 3D cluster detection and β-model surface-brightness fits.
-- **Cosmological parameter recovery**, Random Forest on a 32-d feature vector
-  (field moments + power-spectrum amplitudes + cluster morphology).
+*A 1.56 h⁻¹ Mpc slab through the test box with the median temperature R², at z = 0. Rows:
+temperature, electron density and X-ray emissivity. Columns: inputs, simulation, CosmoMap,
+gradient-boosted trees, and the residuals of each.*
 
 ## Results
 
-| Quantity | Value |
-|---|---:|
-| Overall R² | **0.840** |
-| Electron density (n_e) R² | 0.947 |
-| Temperature R² | 0.733 |
-| Temperature R²: void → cluster core | 0.548 → 0.796 |
-| Density R²: void → cluster core | 0.627 → 0.835 |
-| X-ray emissivity correlation | r = 0.963 ± 0.007 |
-| 95% predictive-interval coverage | 94.2% |
-| Cosmological parameter recovery (Ω_m, σ₈) R² | ≈ 0.64 |
+Test-set accuracy at z = 0 (100 held-out simulations, full 128³ volumes, log₁₀ of the
+physical fields). Fields are normalised with constants fixed from the training set, so no
+statistic of a target field is used at test time.
 
-Headline finding: accuracy *increases* in the densest regions (cluster cores), where
-gravity dominates over stochastic feedback, the opposite of typical ML behaviour,
-and exactly where accurate predictions matter most for X-ray cluster cosmology.
+| Model | log T: R² | RMSE [dex] | log n_e: R² | RMSE [dex] |
+|---|---:|---:|---:|---:|
+| Binned ρ_DM lookup | 0.173 | 0.671 | 0.652 | 0.307 |
+| Gradient-boosted trees | 0.603 | 0.470 | 0.894 | 0.182 |
+| U-Net, no conditioning | 0.647 | 0.438 | 0.906 | 0.172 |
+| CosmoMap-σ (likelihood loss, with uncertainties) | 0.733 | 0.385 | 0.922 | 0.156 |
+| **CosmoMap** | **0.765** | **0.362** | **0.934** | **0.142** |
 
-## Predictions and validation
+The paper also covers the accuracy by density regime and by scale, redshifts up to z = 2,
+an ablation study, bright emission structures and surface-brightness profiles, recovery of
+cosmological parameters, uncertainty calibration, gravity-only inputs, mock X-ray
+lightcones, and the limitations of the model (it smooths compact structures, and
+box-integrated luminosities are biased low).
 
-Predicted gas temperature and electron density against the ground truth. The model recovers the cosmic web in fine detail, with residuals concentrated in the hardest, densest regions:
+## What is in this repository
 
-![Field predictions](docs/figures/field_predictions.png)
+| Path | Contents |
+|---|---|
+| `paper_experiments/` | The scripts that produced every result, table and figure of the paper: preprocessing, training, tiled inference, metrics, baselines and all analyses. Start with its [README](paper_experiments/README.md). |
+| `cosmomap/` | An installable package with the model components those scripts use (the FiLM layer, the residual blocks and the U-Net), the same normalisation and losses, a small training and evaluation pipeline, and X-ray utilities. |
+| `configs/` | `default.yaml` (CosmoMap), `sigma.yaml` (CosmoMap-σ) and `synthetic.yaml` (a tiny demo). |
+| `tests/` | Unit and end-to-end tests of the package and of the building blocks of the paper scripts. |
+| `docs/METHOD.md` | A short guide from each part of the method to the code that implements it. |
 
-| Per-voxel accuracy: R² = 0.733 (T), 0.947 (n_e) | X-ray emissivity: r up to 0.97 |
-|:---:|:---:|
-| ![Accuracy](docs/figures/accuracy.png) | ![X-ray emissivity](docs/figures/xray_emissivity.png) |
+The numbers in the paper come from `paper_experiments/`. The package pipeline in
+`cosmomap/` uses the same network, normalisation, loss and optimiser settings, but it is a
+compact reference implementation: it loads data into memory and has not been used to
+reproduce the paper's numbers.
 
-| Cosmological parameter recovery (Ω_m, σ₈ at R² = 0.64) | Training over 81 epochs, no overfitting |
-|:---:|:---:|
-| ![Parameter recovery](docs/figures/parameter_recovery.png) | ![Training curve](docs/figures/training_curve.png) |
-
-## Quickstart
+## Installation
 
 ```bash
-git clone https://github.com/amanbhutani1/CosmoMap.git
+git clone https://github.com/amanbh1/CosmoMap.git
 cd CosmoMap
-pip install -e ".[dev]"
+pip install -e ".[dev]"          # add ,paper for the extra dependencies of paper_experiments/
+```
 
-# Run the full pipeline end-to-end on generated data
+Python 3.10 or later and TensorFlow 2.16 or later (Keras 3). The paper's runs used
+Python 3.12 and TensorFlow 2.21 on one NVIDIA RTX 4070 (12 GB).
+
+## Quickstart without data
+
+The package can generate small synthetic boxes, so the whole pipeline runs in a minute
+on a CPU. The synthetic fields only exercise the code; they are not a physical model.
+
+```bash
+# train a tiny model
 cosmomap-train --config configs/synthetic.yaml --synthetic
 
-# Evaluate (overall + density-stratified metrics + calibration)
+# accuracy overall and by density regime, and interval coverage
 cosmomap-evaluate --config outputs/synthetic/config.yaml \
                   --model outputs/synthetic/final_model.keras --synthetic
 
-# Build a mock X-ray surface-brightness lightcone (FITS)
+# a simple mock X-ray surface-brightness map (FITS)
 python scripts/make_lightcone.py --config outputs/synthetic/config.yaml \
                                  --model outputs/synthetic/final_model.keras --synthetic
 ```
 
-Run the test suite:
+Run the tests with
 
 ```bash
 pytest
 ```
 
-## Training on CAMELS data
+## Reproducing the paper
 
-The model was trained on the CAMELS IllustrisTNG-LH suite (1,000 simulations spanning
-Ω_m, σ₈ and four supernova/AGN feedback parameters). Point `data.data_root` at the
-`Mcdm`, `Vcdm`, `T` and `ne` fields and run:
+The paper uses the 3D grids of the
+[CAMELS Multifield Dataset](https://camels-multifield-dataset.readthedocs.io/) for the
+IllustrisTNG LH set at 128³ and z = 0, 0.5, 1, 1.5 and 2 (`Mcdm`, `Vcdm`, `T`, `ne`;
+about 34 GB per redshift). [`paper_experiments/README.md`](paper_experiments/README.md)
+lists the files, the order of the scripts and the command for each model. In short:
 
 ```bash
-cosmomap-train --config configs/default.yaml
+cd paper_experiments
+bash download.sh                 # CAMELS grids -> ~/camels
+python prep.py                   # normalise, fixed 800/100/100 split
+python train.py --name mse_z0_s0 --seed 0 --zs 0.0 --loss mse     # about 3 h on an RTX 4070
+python predict.py --name mse_z0_s0 --mc 0
+python metrics.py mse_z0_s0
 ```
 
-`configs/default.yaml` holds the full configuration: 80³ patches, a 3-level
-`64→128→256` encoder, FiLM on the six parameters, heteroscedastic outputs, cosine
-learning-rate decay, gradient clipping, and the tuned composite-loss weights.
+Training on a GPU is not bit-reproducible, so retrained models differ slightly from the
+paper's; the seed-to-seed scatter is given in the paper (below 0.5 per cent in R² and RMSE
+for CosmoMap).
 
-## Repository layout
+## Training with the package on CAMELS data
 
-```
-cosmomap/
-  config.py            # typed, YAML-serialisable configuration
-  data/
-    container.py       # CamelsData: fields + conditioning parameters
-    normalization.py   # log + per-patch z-score (invertible)
-    camels.py          # CAMELS loader
-    synthetic.py       # CAMELS-like generator for tests and smoke runs
-    dataset.py         # tf.data patch pipeline (simulation-level split)
-  models/
-    film.py            # FiLM layer
-    blocks.py          # conditioning MLP + residual block
-    unet3d.py          # 3D FiLM U-Net (heteroscedastic)
-  losses.py            # composite NLL + MSE + MAE + Huber + physics
-  metrics.py           # R², RMSE, PSNR, SSIM, power spectrum
-  uncertainty.py       # MC-dropout + aleatoric/epistemic split
-  validation.py        # scaling relations, cluster detection, β-model, Mahalanobis
-  train.py             # training loop (CLI: cosmomap-train)
-  evaluate.py          # density-stratified evaluation (CLI: cosmomap-evaluate)
-  xray/
-    emissivity.py      # bremsstrahlung emissivity
-    lightcone.py       # lightcone forward model + FITS/WCS output
-  inference.py         # cosmological-parameter recovery (Random Forest)
-configs/               # default.yaml (full), gpu.yaml, synthetic.yaml
-scripts/               # make_lightcone.py
-tests/                 # unit + end-to-end tests
-docs/METHOD.md         # method write-up: equation → code
+```bash
+cosmomap-train --config configs/default.yaml      # CosmoMap (MSE loss)
+cosmomap-train --config configs/sigma.yaml        # CosmoMap-σ (likelihood loss, uncertainties)
 ```
 
-## Method
+Set `data.data_root` to the folder with the CAMELS grids. The loader reads the simulations
+into memory, so `data.max_sims` (100 in the shipped configs) controls how many are used;
+for the full set use the memory-mapped scripts in `paper_experiments/`.
 
-See [`docs/METHOD.md`](docs/METHOD.md) for the full method write-up, mapping each
-component (normalisation, FiLM conditioning, the composite loss, the X-ray forward
-model, the validation suite) to its governing equation.
+## Citation
+
+If you use this code, please cite the paper:
+
+> A. Bhutani and M. Lieu, *CosmoMap: Predicting Hot Gas Temperature and Density from Dark
+> Matter with a Conditioned 3D U-Net*.
+
+and the CAMELS project and Multifield Dataset, whose simulations it is trained on
+(Villaescusa-Navarro et al. 2021, 2022).
+
+## Acknowledgements
+
+This work began as an MSci project at the University of Nottingham. We thank the CAMELS
+collaboration for making their simulations publicly available.
 
 ## License
 
