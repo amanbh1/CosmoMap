@@ -139,8 +139,7 @@ and the CAMELS project and Multifield Dataset, whose simulations it is trained o
 
 ## Acknowledgements
 
-This work began as an MSci project at the University of Nottingham. We thank the CAMELS
-collaboration for making their simulations publicly available.
+We thank the CAMELS collaboration for making their simulations publicly available.
 
 ## License
 
